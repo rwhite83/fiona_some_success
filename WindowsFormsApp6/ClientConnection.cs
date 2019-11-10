@@ -46,7 +46,7 @@ namespace WindowsFormsApp6
         {
             _controlWriter.WriteLine("220 Service Ready.");
             _controlWriter.Flush();
-            
+
 
             string line;
 
@@ -100,6 +100,9 @@ namespace WindowsFormsApp6
                                 break;
                             case "LIST":
                                 response = List(arguments);
+                                break;
+                            case "RETR":
+                                response = Retrieve(arguments);
                                 break;
 
                             default:
@@ -305,6 +308,108 @@ namespace WindowsFormsApp6
                 _controlWriter.Flush();
             }
         }
+
+        private string Retrieve(string pathname)
+        {
+            /*
+            pathname = NormalizeFilename(pathname);
+
+            if (IsPathValid(pathname))
+            {
+                if (File.Exists(pathname))
+                {
+                */
+            if (!conn_type_passive)
+            {
+                _dataClient = new TcpClient();
+                _dataClient.BeginConnect(_dataEndpoint.Address, _dataEndpoint.Port, DoRetrieve, pathname);
+            }
+            else
+            {
+                _passiveListener.BeginAcceptTcpClient(DoRetrieve, pathname);
+            }
+
+            return string.Format("150 Opening {0} mode data transfer for RETR", conn_type_passive ? "passive" : "active");
+            /*     }
+             }
+
+            return "550 File Not Found";*/
+        }
+
+        private void DoRetrieve(IAsyncResult result)
+        {
+            if (!conn_type_passive)
+            {
+                _dataClient.EndConnect(result);
+            }
+            else
+            {
+                _dataClient = _passiveListener.EndAcceptTcpClient(result);
+            }
+
+
+            string pathname = "fiona\\" + (string)result.AsyncState;
+
+            using (NetworkStream dataStream = _dataClient.GetStream())
+            {
+                using (FileStream fs = new FileStream(pathname, FileMode.Open, FileAccess.Read))
+                {
+                    CopyStream(fs, dataStream);
+                    _dataClient.Close();
+                    _dataClient = null;
+                }
+            }
+        }
+
+        private static long CopyStream(Stream input, Stream output, int bufferSize)
+        {
+            byte[] buffer = new byte[bufferSize];
+            int count = 0;
+            long total = 0;
+
+            while ((count = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                output.Write(buffer, 0, count);
+                total += count;
+            }
+
+            return total;
+        }
+
+        private static long CopyStreamAscii(Stream input, Stream output, int bufferSize)
+        {
+            char[] buffer = new char[bufferSize];
+            int count = 0;
+            long total = 0;
+
+            using (StreamReader rdr = new StreamReader(input))
+            {
+                using (StreamWriter wtr = new StreamWriter(output, Encoding.ASCII))
+                {
+                    while ((count = rdr.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        wtr.Write(buffer, 0, count);
+                        total += count;
+                    }
+                }
+            }
+
+            return total;
+        }
+
+        private long CopyStream(Stream input, Stream output)
+        {
+            if (_transferType == "I")
+            {
+                return CopyStream(input, output, 4096);
+            }
+            else
+            {
+                return CopyStreamAscii(input, output, 4096);
+            }
+        }
+
+
 
         private bool IsPathValid(string path)
         {
