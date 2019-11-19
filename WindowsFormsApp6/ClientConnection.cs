@@ -26,8 +26,8 @@ namespace WindowsFormsApp6
         private TcpListener _passiveListener;
         private bool conn_type_passive;
         private IPEndPoint _dataEndpoint;
-        private string _currentDirectory;
-        private string _root;
+        private string _currentDirectory = "C:\\fiona";
+        private string _root = "C:\\fiona";
         private TcpClient _dataClient;
         private StreamReader _dataReader;
         private StreamWriter _dataWriter;
@@ -82,7 +82,7 @@ namespace WindowsFormsApp6
                                 response = ChangeWorkingDirectory("..");
                                 break;
                             case "PWD":
-                                response = "257 \"/\" is current directory.";
+                                response = PrintWorkingDirectory();
                                 break;
                             case "QUIT":
                                 response = "221 Service closing control connection";
@@ -99,7 +99,7 @@ namespace WindowsFormsApp6
                                 response = Passive();
                                 break;
                             case "LIST":
-                                response = List(arguments);
+                                response = List(arguments ?? _currentDirectory);
                                 break;
                             case "RETR":
                                 response = Retrieve(arguments);
@@ -222,13 +222,14 @@ namespace WindowsFormsApp6
 
         private string List(string pathname)
         {
-
+            Console.WriteLine("List command pathname: " + pathname);
             if (pathname == null)
             {
                 pathname = string.Empty;
             }
-
-            pathname = new DirectoryInfo(Path.Combine("fiona", pathname)).FullName;
+            Console.WriteLine(_currentDirectory);
+            pathname = new DirectoryInfo(Path.Combine(_currentDirectory, pathname)).FullName;
+            Console.WriteLine(pathname);
 
             //if (IsPathValid(pathname))
             //{
@@ -263,6 +264,7 @@ namespace WindowsFormsApp6
             }
 
             string pathname = (string)result.AsyncState;
+            Console.WriteLine("DoList pathname: " + pathname);
 
             using (NetworkStream dataStream = _dataClient.GetStream())
             {
@@ -273,6 +275,7 @@ namespace WindowsFormsApp6
 
                 foreach (string dir in directories)
                 {
+                    Console.WriteLine("DoList dir" + dir);
                     DirectoryInfo d = new DirectoryInfo(dir);
 
                     string date = d.LastWriteTime < DateTime.Now - TimeSpan.FromDays(180) ?
@@ -348,7 +351,7 @@ namespace WindowsFormsApp6
             }
 
 
-            string pathname = "fiona\\" + (string)result.AsyncState;
+            string pathname = Path.Combine(_currentDirectory, (string)result.AsyncState);
 
             using (NetworkStream dataStream = _dataClient.GetStream())
             {
@@ -454,7 +457,57 @@ namespace WindowsFormsApp6
 
         private string ChangeWorkingDirectory(string pathname)
         {
-            return "250 Changed to new directory";
+            if (pathname == "/")
+            {
+                _currentDirectory = _root;
+            }
+            else
+            {
+                string newDir;
+
+                if (pathname.StartsWith("/", StringComparison.OrdinalIgnoreCase))
+                {
+                    pathname = pathname.Substring(1).Replace('/', '\\');
+                    newDir = Path.Combine(_root, pathname);
+                }
+                else
+                {
+                    pathname = pathname.Replace('/', '\\');
+                    newDir = Path.Combine(_currentDirectory, pathname);
+                }
+                if (Directory.Exists(newDir))
+                {
+                    Console.WriteLine(_currentDirectory);
+                    _currentDirectory = new DirectoryInfo(newDir).FullName;
+                    Console.WriteLine(newDir);
+                    Console.WriteLine(_currentDirectory);
+
+                    if (!IsPathValid(_currentDirectory))
+                    {
+                        _currentDirectory = _root;
+                    }
+                }
+                else
+                {
+                    _currentDirectory = _root;
+                }
+            }
+
+            return "200 OK";
+        }
+
+        private string PrintWorkingDirectory()
+        {
+            Console.WriteLine(_currentDirectory);
+            string current = _currentDirectory.Replace(_root, string.Empty).Replace('\\', '/');
+
+            if (current.Length == 0)
+            {
+                current = "/";
+            }
+            Console.WriteLine(_currentDirectory);
+
+            return "257 " + _currentDirectory;
         }
 
         #endregion
